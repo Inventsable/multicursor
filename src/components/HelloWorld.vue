@@ -1,59 +1,128 @@
 <template>
   <div class="hello">
-    <h1>{{ msg }}</h1>
-    <p>
-      For a guide and recipes on how to configure / customize this project,<br>
-      check out the
-      <a href="https://cli.vuejs.org" target="_blank" rel="noopener">vue-cli documentation</a>.
-    </p>
-    <h3>Installed CLI Plugins</h3>
-    <ul>
-      <li><a href="https://github.com/vuejs/vue-cli/tree/dev/packages/%40vue/cli-plugin-babel" target="_blank" rel="noopener">babel</a></li>
-      <li><a href="https://github.com/vuejs/vue-cli/tree/dev/packages/%40vue/cli-plugin-router" target="_blank" rel="noopener">router</a></li>
-      <li><a href="https://github.com/vuejs/vue-cli/tree/dev/packages/%40vue/cli-plugin-vuex" target="_blank" rel="noopener">vuex</a></li>
-    </ul>
-    <h3>Essential Links</h3>
-    <ul>
-      <li><a href="https://vuejs.org" target="_blank" rel="noopener">Core Docs</a></li>
-      <li><a href="https://forum.vuejs.org" target="_blank" rel="noopener">Forum</a></li>
-      <li><a href="https://chat.vuejs.org" target="_blank" rel="noopener">Community Chat</a></li>
-      <li><a href="https://twitter.com/vuejs" target="_blank" rel="noopener">Twitter</a></li>
-      <li><a href="https://news.vuejs.org" target="_blank" rel="noopener">News</a></li>
-    </ul>
-    <h3>Ecosystem</h3>
-    <ul>
-      <li><a href="https://router.vuejs.org" target="_blank" rel="noopener">vue-router</a></li>
-      <li><a href="https://vuex.vuejs.org" target="_blank" rel="noopener">vuex</a></li>
-      <li><a href="https://github.com/vuejs/vue-devtools#vue-devtools" target="_blank" rel="noopener">vue-devtools</a></li>
-      <li><a href="https://vue-loader.vuejs.org" target="_blank" rel="noopener">vue-loader</a></li>
-      <li><a href="https://github.com/vuejs/awesome-vue" target="_blank" rel="noopener">awesome-vue</a></li>
-    </ul>
+    <div id="pointers"></div>
+    <canvas id="canvas" width="2000" height="1000"></canvas>
   </div>
 </template>
 
 <script>
+const socket = require("socket.io-client")("http://localhost:3000");
+
 export default {
-  name: 'HelloWorld',
+  name: "HelloWorld",
   props: {
     msg: String
+  },
+  mounted() {
+    // socket.on("connect", onConnect);
+
+    function onConnect() {
+      console.log("CONNECTED!");
+    }
+
+    const url = window.location.origin;
+    // console.log(io);
+    // let socket = socket(url);
+    let prev = {};
+    let canvas = document.getElementById("canvas");
+    let context = canvas.getContext("2d");
+    let pointerContainer = document.getElementById("pointers");
+
+    let pointer = document.createElement("div");
+    pointer.setAttribute("class", "pointer");
+
+    let drawing = false;
+    let clients = {};
+    let pointers = {};
+
+    function drawLine(fromx, fromy, tox, toy) {
+      context.moveTo(fromx, fromy);
+      context.lineTo(tox, toy);
+      context.stroke();
+    }
+
+    function now() {
+      return new Date().getTime();
+    }
+
+    let lastEmit = now();
+
+    canvas.onmouseup = canvas.onmousemove = canvas.onmousedown = function(e) {
+      switch (e.type) {
+        case "mouseup":
+          drawing = false;
+          break;
+
+        case "mousemove":
+          // if (now() - lastEmit > 50) {
+          socket.emit("mousemove", {
+            x: e.pageX,
+            y: e.pageY,
+            drawing: drawing
+          });
+          lastEmit = now();
+          // }
+
+          if (drawing) {
+            drawLine(prev.x, prev.y, e.pageX, e.pageY);
+
+            prev.x = e.pageX;
+            prev.y = e.pageY;
+          }
+          break;
+
+        case "mousedown":
+          drawing = true;
+          prev.x = e.pageX;
+          prev.y = e.pageY;
+          break;
+
+        default:
+          break;
+      }
+    };
+
+    socket.on("moving", function(data) {
+      if (!clients.hasOwnProperty(data.id)) {
+        pointers[data.id] = pointerContainer.appendChild(pointer.cloneNode());
+      }
+
+      pointers[data.id].style.left = data.x + "px";
+      pointers[data.id].style.top = data.y + "px";
+
+      if (data.drawing && clients[data.id]) {
+        drawLine(clients[data.id].x, clients[data.id].y, data.x, data.y);
+      }
+
+      clients[data.id] = data;
+      clients[data.id].updated = now();
+    });
+
+    socket.on("clientdisconnect", function(id) {
+      delete clients[id];
+      if (pointers[id]) {
+        pointers[id].parentNode.removeChild(pointers[id]);
+      }
+    });
   }
-}
+};
 </script>
 
-<!-- Add "scoped" attribute to limit CSS to this component only -->
-<style scoped>
-h3 {
-  margin: 40px 0 0;
+<style>
+body {
+  background: #7aa2b9;
+  overflow: hidden;
 }
-ul {
-  list-style-type: none;
-  padding: 0;
+
+#pointers {
+  position: relative;
 }
-li {
-  display: inline-block;
-  margin: 0 10px;
-}
-a {
-  color: #42b983;
+
+#pointers .pointer {
+  position: absolute;
+  width: 15px;
+  height: 22px;
+  background: url("https://uploads.codesandbox.io/uploads/user/88acfe5a-77fc-498c-98ee-d1b0b303f6a8/tC4n-pointer.png")
+    no-repeat -4px 0;
 }
 </style>
